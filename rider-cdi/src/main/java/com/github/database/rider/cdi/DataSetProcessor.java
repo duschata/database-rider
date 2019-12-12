@@ -1,5 +1,6 @@
 package com.github.database.rider.cdi;
 
+import com.github.database.rider.cdi.api.DefaultAnnotation;
 import com.github.database.rider.cdi.api.RiderPUAnnotation;
 import com.github.database.rider.core.api.dataset.DataSetExecutor;
 import com.github.database.rider.core.api.exporter.DataSetExportConfig;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.RequestScoped;
+import javax.enterprise.inject.Any;
 import javax.enterprise.inject.Instance;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
@@ -45,6 +47,10 @@ public class DataSetProcessor {
     private Boolean isJta;
 
     @Inject
+    @Any
+    Instance<EntityManager> entityManagerInstance;
+
+    @Inject
     Instance<JTAConnectionHolder> jtaConnectionHolder;
 
 
@@ -62,14 +68,13 @@ public class DataSetProcessor {
     private EntityManager resolveEntityManager(String entityManagerBeanName) {
         try {
             if ("".equals(entityManagerBeanName)) {
-                return CDI.current().select(EntityManager.class).get();
+                return entityManagerInstance.select(EntityManager.class, new DefaultAnnotation()).get();
             } else {
-                BeanManager beanManager = CDI.current().getBeanManager();
-                return (EntityManager) beanManager.getReference(beanManager.getBeans(EntityManager.class, new RiderPUAnnotation(entityManagerBeanName){}).iterator().next(), EntityManager.class, null);
+                return entityManagerInstance.select(EntityManager.class, new RiderPUAnnotation(entityManagerBeanName){}).get();
             }
         } catch (Exception e) {
             log.warn("Could not resolve entity manager named {}. Default one will be used.", entityManagerBeanName, e);
-            return CDI.current().select(EntityManager.class).get();//quarkus wont have multiple entity manager
+            return entityManagerInstance.select(EntityManager.class, new DefaultAnnotation()).get();//quarkus wont have multiple entity manager (for now)
         }
     }
 

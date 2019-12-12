@@ -6,9 +6,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.inject.Any;
+import javax.enterprise.inject.Instance;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
+import javax.inject.Inject;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -22,6 +25,10 @@ public class JTAConnectionHolder {
 	private static final Logger log = LoggerFactory.getLogger(JTAConnectionHolder.class.getName());
 
 	protected Map<String, Connection> connections = new HashMap<>();
+
+	@Inject
+    @Any
+    protected Instance<DataSource> datasources;
 
 	public void init(String dataSourceName) {
 		try {
@@ -38,9 +45,7 @@ public class JTAConnectionHolder {
         if ("".equals(dataSourceName)) { //default datasource
             return CDI.current().select(DataSource.class).get();
         } else {
-            BeanManager beanManager = CDI.current().getBeanManager();
-            Set<Bean<?>> beans = beanManager.getBeans(DataSource.class, new RiderPUAnnotation(dataSourceName));
-            return (DataSource)beanManager.getReference(beans.iterator().next(), DataSource.class,beanManager.createCreationalContext(null));
+            return datasources.select(DataSource.class, new RiderPUAnnotation(dataSourceName)).get();
         }
     }
 
