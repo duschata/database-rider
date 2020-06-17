@@ -56,6 +56,24 @@ public class DataSetExecutorImpl implements DataSetExecutor {
 
     private static final List<String> RESERVED_TABLE_NAMES;
 
+    public static final String NOT_A_VALID_URL_LOG = "The dataSet %s is not a valid URL or can't be opened. Continuing with classpath search";
+
+    public static final String COULD_NOT_FIND_DATASET_EXCEPTION = "The dataset '%s' is neither a valid URL nor could be found under 'resources' or 'resources/datasets' directory.";
+
+    private final AtomicBoolean printDBUnitConfig = new AtomicBoolean(true);
+
+    private DBUnitConfig dbUnitConfig;
+
+    private RiderDataSource riderDataSource;
+
+    private ConnectionHolder connectionHolder;
+
+    private final String executorId;
+
+    private List<String> tableNames;
+
+    private boolean isConstraintsDisabled = false;
+
     static {
         SEQUENCE_TABLE_NAME = System.getProperty("SEQUENCE_TABLE_NAME") == null ? "SEQ"
                 : System.getProperty("SEQUENCE_TABLE_NAME");
@@ -65,20 +83,6 @@ public class DataSetExecutorImpl implements DataSetExecutor {
         } else {
             RESERVED_TABLE_NAMES = Arrays.asList("user", "password", "value");
         }
-    }
-
-    private final AtomicBoolean printDBUnitConfig = new AtomicBoolean(true);
-    private final String executorId;
-    private DBUnitConfig dbUnitConfig;
-    private RiderDataSource riderDataSource;
-    private ConnectionHolder connectionHolder;
-    private List<String> tableNames;
-    private boolean isConstraintsDisabled = false;
-
-    private DataSetExecutorImpl(String executorId, ConnectionHolder connectionHolder, DBUnitConfig dbUnitConfig) {
-        this.connectionHolder = connectionHolder;
-        this.executorId = executorId;
-        this.dbUnitConfig = dbUnitConfig;
     }
 
     public static DataSetExecutorImpl instance(ConnectionHolder connectionHolder) {
@@ -111,8 +115,10 @@ public class DataSetExecutorImpl implements DataSetExecutor {
         return instance;
     }
 
-    public static DataSetExecutorImpl getExecutorById(String id) {
-        return executors.get(id);
+    private DataSetExecutorImpl(String executorId, ConnectionHolder connectionHolder, DBUnitConfig dbUnitConfig) {
+        this.connectionHolder = connectionHolder;
+        this.executorId = executorId;
+        this.dbUnitConfig = dbUnitConfig;
     }
 
     @Override
@@ -253,14 +259,14 @@ public class DataSetExecutorImpl implements DataSetExecutor {
                 case "xml": {
                     try {
                         target = new ScriptableDataSet(sensitiveTableNames, new FlatXmlDataSetBuilder()
-                                .setColumnSensing(dbUnitConfig.isColumnSensing())
-                                .setCaseSensitiveTableNames(sensitiveTableNames)
-                                .build(getDataSetUrl(dataSetName)));
+                            .setColumnSensing(dbUnitConfig.isColumnSensing())
+                            .setCaseSensitiveTableNames(sensitiveTableNames)
+                            .build(getDataSetUrl(dataSetName)));
                     } catch (Exception e) {
                         target = new ScriptableDataSet(sensitiveTableNames, new FlatXmlDataSetBuilder()
-                                .setColumnSensing(dbUnitConfig.isColumnSensing())
-                                .setCaseSensitiveTableNames(sensitiveTableNames)
-                                .build(getDataSetStream(dataSetName)));
+                            .setColumnSensing(dbUnitConfig.isColumnSensing())
+                            .setCaseSensitiveTableNames(sensitiveTableNames)
+                            .build(getDataSetStream(dataSetName)));
                     }
                     break;
                 }
@@ -270,7 +276,7 @@ public class DataSetExecutorImpl implements DataSetExecutor {
                         URL url = new URL(dataSetName);
                         parentFile = new File(url.getPath()).getParentFile();
                     } catch (MalformedURLException e) {
-                        log.info("The dataSet %s is not a valid URL or can't be opened. Falling back to classpath search", dataSet);
+                        log.info(NOT_A_VALID_URL_LOG, dataSet);
                     }
                     if (parentFile == null) {
                         parentFile = new File(getClass().getClassLoader().getResource(dataSetName).getFile()).getParentFile();
@@ -310,7 +316,7 @@ public class DataSetExecutorImpl implements DataSetExecutor {
             resource.openStream(); //can be accessed
             return resource;
         } catch (IOException e) {
-            log.info("The dataSet %s is not a valid URL or can't be opened. Falling back to classpath search", dataSet);
+            log.info(NOT_A_VALID_URL_LOG, dataSet);
         }
 
         if (!dataSet.startsWith("/")) {
@@ -322,7 +328,7 @@ public class DataSetExecutorImpl implements DataSetExecutor {
         }
         if (resource == null) {
             throw new RuntimeException(
-                    String.format("Could not find dataset '%s' under 'resources' or 'resources/datasets' directory.",
+                    String.format(COULD_NOT_FIND_DATASET_EXCEPTION,
                             dataSet.substring(1)));
         }
         return resource;
@@ -603,12 +609,16 @@ public class DataSetExecutorImpl implements DataSetExecutor {
         return executorId;
     }
 
+    public static DataSetExecutorImpl getExecutorById(String id) {
+        return executors.get(id);
+    }
+
     private InputStream getDataSetStream(String dataSet) {
         try {
             URL url = new URL(dataSet);
             return url.openStream();
         } catch (IOException e) {
-            log.info("The dataSet %s is not a valid URL or can't be opened. Falling back to classpath search", dataSet);
+            log.info(NOT_A_VALID_URL_LOG, dataSet);
         }
         if (!dataSet.startsWith("/")) {
             dataSet = "/" + dataSet;
@@ -619,7 +629,7 @@ public class DataSetExecutorImpl implements DataSetExecutor {
         }
         if (is == null) {
             throw new RuntimeException(
-                    String.format("Could not find dataset '%s' under 'resources' or 'resources/datasets' directory.",
+                    String.format(COULD_NOT_FIND_DATASET_EXCEPTION,
                             dataSet.substring(1)));
         }
         return is;
@@ -670,7 +680,7 @@ public class DataSetExecutorImpl implements DataSetExecutor {
         }
 
         // enabling constraints only if `disableConstraints == false`
-        if (!config.isDisableConstraints()) {
+        if(!config.isDisableConstraints()) {
             enableConstraints();
         }
 
@@ -678,7 +688,7 @@ public class DataSetExecutorImpl implements DataSetExecutor {
 
     private List<String> getTablesToSkipOnCleaning(DataSetConfig config) {
         List<String> tablesToSkipOnCleaning = config.getSkipCleaningFor() != null ? Arrays.asList(config.getSkipCleaningFor()) : Collections.<String>emptyList();
-        if (!tablesToSkipOnCleaning.isEmpty()) {
+        if(!tablesToSkipOnCleaning.isEmpty()) {
             for (Iterator<String> it = tablesToSkipOnCleaning.iterator(); it.hasNext(); ) {
                 String tableName = it.next();
                 if (RESERVED_TABLE_NAMES.contains(tableName.toLowerCase())) {
@@ -1055,16 +1065,16 @@ public class DataSetExecutorImpl implements DataSetExecutor {
     }
 
     @Override
-    public DBUnitConfig getDBUnitConfig() {
-        return dbUnitConfig;
-    }
-
-    @Override
     public void setDBUnitConfig(DBUnitConfig dbUnitConfig) {
         if (this.dbUnitConfig != dbUnitConfig) {
             this.dbUnitConfig = dbUnitConfig;
             riderDataSource = null;
         }
+    }
+
+    @Override
+    public DBUnitConfig getDBUnitConfig() {
+        return dbUnitConfig;
     }
 
     @Override
